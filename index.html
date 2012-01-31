@@ -21,16 +21,48 @@
             window.addEventListener('load',loadResources,false);
 
             function loadResources() {
-                help.akihabaraInit('8by5');
+                help.akihabaraInit({
+                    title: '8by5',
+                    width: 640,
+                    height: 480,
+                    zoom: 1    
+                });
                 gbox.addImage('font', 'font.png');
                 gbox.addImage('logo', 'logo.png');
+                gbox.addImage('player_sprite', 'player_sprite.png');
+                gbox.addTiles({
+                    id:         'player_tiles',
+                    image:      'player_sprite', 
+                    tileh:      16,
+                    tilew:      16,
+                    tilerow:    1,
+                    gapx:       0,
+                    gapy:       0
+                });
+
+                gbox.addImage('map_spritesheet', 'map_pieces.png');
+                gbox.addTiles({
+                    id:         'map_pieces',
+                    image:      'map_spritesheet', 
+                    tileh:      16,
+                    tilew:      16,
+                    tilerow:    1,
+                    gapx:       0,
+                    gapy:       0
+                });
+
                 gbox.addFont({id:'small',image:'font', firstletter: ' ', tileh: 8, tilew: 8, tilerow: 255, gapx: 0, gapy:0 });
                 gbox.loadAll(main);
             }
 
             function main() {
-                gbox.setGroups(['game']);
+                gbox.setGroups(['background', 'player', 'game']);
                 maingame = gamecycle.createMaingame('game', 'game');
+                
+                //Disable the default difficulty-choice menu;
+                maingame.gameMenu = function() { return true; };
+                // Disable the default "Let's begin" screen
+                maingame.gameIntroAnimation = function() {return true;};
                 
                 maingame.gameTitleIntroAnimation = function(reset) {
                     if(reset) {
@@ -57,8 +89,147 @@
                         }
                     }
                 }
-                
+                maingame.initializeGame = function() {
+                    addPlayer();
+                    addMap();
+                };
+                map = {
+                    tileset: 'map_pieces',
+                    map: loadMap(),
+                    tileIsSolid: function(obj, t) {
+                        return t !=null; // Wall is solid if not an empty space
+                    }
+                };
+                map = help.finalizeTilemap(map);
+                gbox.createCanvas('map_canvas', {w: map.w, h: map.h });
+                gbox.blitTilemap(gbox.getCanvasContext('map_canvas'), map);
                 gbox.go();
+            }
+
+            function loadMap() {
+                return help.asciiArtToMap([
+                "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                "x                  xx                  xxxx                            x",
+                "x                  xx                  xxxx  xxxx  xxxxxxxxxxxxxxxxxxxxx",
+                "xxxxxxxx      x    xx                                                  x",
+                "x                  xxxxxxxxxx          xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                "x                                      xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                "x                                      xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                "x    xxxx   xxxxxxxxx           xxxxxxx                                x",
+                "x                  xx                     xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                "x                  xx                  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                "xxxx               xx                  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                "x      xxxxxxxxx   xx                  xxxxxxxx  xxxxxxxxxxxxxxxxxxxxxxx",
+                "x                  xx                  xxxxxx    xxxxxxxxxxxxxxxxxxxxxxx",
+                "x                  xx                  xxxxxx     xxxxxxxxxxxxxxxxxxxxxx",
+                "xxxxxxx  xxxxxxxxxxxx                  xxxxx       xxxxxxxxxxxxxxxxxxxxx",
+                "xxxxxxx  xxxxxxxxxxxx                  xxx           xxxxxxxxxxxxxxxxxxx",
+                "x                  xx         xxxx     xx               xxxxxxxxxxxxxxxx",
+                "x                  xx         x        x                      xxxxxxxxxx",
+                "xxxxxxxx      x    xx                  xxxxxxxxxx  xxxxxxxxxxxxxxxxxxxxx",
+                "x             x    xx                  xxxxxxxxx   xxxxxxxxxxxxxxxxxxxxx",
+                "x             x    xx                  xxxxxxxxxx  xxxxxxxxxxxxxxxxxxxxx",
+                "x             x    xx                  xxxxxxxxxx                      x",
+                "x        xxx xxxxxxxxx                 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  x",
+                "x                  xx                  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  x",
+                "xxxx                                   xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  x",
+                "x                                      xxxxxxx                         x",
+                "x                                      xxxxxxx  xxxxxxxxxxxxxxxxxxxxxxxx",
+                "x                  xx                           xxxxxxxxxxxxxxxxxxxxxxxx",
+                "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  xxxxxxxxxxxxxxxxxxxxxxxx",
+                "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  xxxxxxxxxxxxxxxxxxxxxxxx",
+                "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx                         x",
+                "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  xxxxxxxxxxxxxxxxxxxxx  x",
+                "xxxxxxxxx                                       xxxxxxxxxxxxxxxxxxxxx  x",
+                "xxxxxxxxxxxxxxxxxx  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  x",
+                "xxxxxxxxxxx         xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  x",
+                "xxxxxxxxxxx                                                            x",
+                "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                ],[[null, ' '], [0, 'x'] ])
+            }
+
+            function addMap(){
+                gbox.addObject({
+                    id:     'background_id',
+                    group:  'background',
+                    blit:   function() {
+                                // Clear Screen
+                                gbox.blitFade(gbox.getBufferContext(), {alpha: 1});
+                                // Center the camera on the player object.
+                                followCamera(gbox.getObject('player', 'player_id'), {w:map.w, h:map.h});
+                                gbox.blit(gbox.getBufferContext(), 
+                                    gbox.getCanvas('map_canvas'), {
+                                        dx: 0, 
+                                        dy:0, 
+                                        dw: gbox.getCanvas('map_canvas').width,
+                                        dh: gbox.getCanvas('map_canvas').height, 
+                                        sourcecamera: true });
+                        }
+                });
+            }
+
+            function addPlayer() {
+                gbox.addObject({
+                    id: 'player_id',
+                    group: 'player',
+                    tileset: 'player_tiles',
+
+                    //Override default colh (collision height)
+                    colh:gbox.getTiles('player_tiles').tileh,
+                    
+                    // This function runs when the object is first created.  In the case of 
+                    // the player object this only happens once at the beginning of the game
+                    // or possibly after a player dies and respawns
+                    initialize: function(){
+                        toys.topview.initialize(this, {});   
+                        this.x = 20;
+                        this.y = 20;
+                    },
+
+                    // First function is like a step function. It runs every frame and does 
+                    // calculations and happens before the rendering, so we calculate new 
+                    // positions and actions and then render the object
+                    first: function(){
+                        // Toys.topview.controlKeys sets the main key controls.
+                        toys.topview.controlKeys(this, {left:'left',right:'right',up:'up',down:'down'});    
+                        // Adds some friction to our accelerations so we stop when we're not accelerating
+                        toys.topview.handleAccellerations(this);
+                        // This tells the physics engine to apply those forces
+                        toys.topview.applyForces(this);
+                        toys.topview.tileCollision(this, map, 'map', null, { tolerance: 6, approximation: 3 });
+                    },
+
+                    // The blit function is what happens during the game's draw cycle.  
+                    // Everything related to rendering and drawing goes here.
+                    blit: function(){                        
+                        gbox.blitTile(gbox.getBufferContext(), {
+                            tileset: this.tileset,    
+                            tile:    this.frame,
+                            dx:      this.x,
+                            dy:      this.y,
+                            fliph:   this.fliph,
+                            flipv:   this.flipv,
+                            camera:  this.camera,
+                            alpha:   1.0
+                        });    
+                    }    
+                });
+            }
+
+            function followCamera(obj,viewdata) {
+                  xbuf = 164;
+                  ybuf = 164;
+                  xcam = gbox.getCamera().x;
+                  ycam = gbox.getCamera().y;
+
+                  // Player moving to the right
+                  if((obj.x - xcam) > (gbox._screenw - xbuf)) gbox.setCameraX(xcam + (obj.x - xcam)- (gbox._screenw - xbuf),viewdata);
+                  // Player moving to the left
+                  if((obj.x - xcam) < (xbuf)) gbox.setCameraX(xcam + (obj.x - xcam) - (xbuf), viewdata);
+                  // Player moving down
+                  if((obj.y - ycam) > (gbox._screenh - ybuf)) gbox.setCameraY(ycam + (obj.y - ycam) - (gbox._screenh - ybuf), viewdata);
+                  // Player moving up
+                  if((obj.y - ycam) < (ybuf)) gbox.setCameraY(ycam + (obj.y - ycam) - (ybuf),viewdata);
             }
         </script>       
 </html>
